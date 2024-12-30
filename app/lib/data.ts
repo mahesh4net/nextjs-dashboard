@@ -1,4 +1,7 @@
 import { sql } from '@vercel/postgres';
+ import { db } from "@vercel/postgres";
+
+
 import {
   CustomerField,
   CustomersTableType,
@@ -9,28 +12,43 @@ import {
 } from './definitions';
 import { formatCurrency } from './utils';
 
+
+async function getClient() {
+  return await db.connect();
+}
+
+
+
+
+
+
 export async function fetchRevenue() {
+  const client = await getClient();
   try {
     // Artificially delay a response for demo purposes.
     // Don't do this in production :)
 
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log('Fetching revenue data...');
+   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const data = await sql<Revenue>`SELECT * FROM revenue`;
+    const data = await client.sql<Revenue>`SELECT * FROM revenue`;
 
-    // console.log('Data fetch completed after 3 seconds.');
+     console.log('Data fetch completed after 3 seconds.');
 
     return data.rows;
-  } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch revenue data.');
-  }
+  } catch (error : any) {
+  console.error('Database Error:', error);
+  console.error('Stack Trace:', error.stack); // Log the stack trace
+  throw new Error('Failed to fetch revenue data.');
+} finally {
+  client.release(); // Release the connection
+}
 }
 
 export async function fetchLatestInvoices() {
+  const client = await getClient();
   try {
-    const data = await sql<LatestInvoiceRaw>`
+    const data = await client.sql<LatestInvoiceRaw>`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
@@ -45,17 +63,20 @@ export async function fetchLatestInvoices() {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch the latest invoices.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
 export async function fetchCardData() {
+  const client = await getClient();
   try {
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
     // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
+    const invoiceCountPromise = client.sql`SELECT COUNT(*) FROM invoices`;
+    const customerCountPromise = client.sql`SELECT COUNT(*) FROM customers`;
+    const invoiceStatusPromise = client.sql`SELECT
          SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
          SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
          FROM invoices`;
@@ -65,6 +86,8 @@ export async function fetchCardData() {
       customerCountPromise,
       invoiceStatusPromise,
     ]);
+
+    console.log(data)
 
     const numberOfInvoices = Number(data[0].rows[0].count ?? '0');
     const numberOfCustomers = Number(data[1].rows[0].count ?? '0');
@@ -80,6 +103,8 @@ export async function fetchCardData() {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch card data.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
@@ -88,10 +113,11 @@ export async function fetchFilteredInvoices(
   query: string,
   currentPage: number,
 ) {
+  const client = await getClient();
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    const invoices = await sql<InvoicesTable>`
+    const invoices = await client.sql<InvoicesTable>`
       SELECT
         invoices.id,
         invoices.amount,
@@ -116,12 +142,16 @@ export async function fetchFilteredInvoices(
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoices.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
 export async function fetchInvoicesPages(query: string) {
+  const client = await getClient();
+  
   try {
-    const count = await sql`SELECT COUNT(*)
+    const count = await client.sql`SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE
@@ -137,12 +167,19 @@ export async function fetchInvoicesPages(query: string) {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch total number of invoices.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
+
+
 export async function fetchInvoiceById(id: string) {
+  const client = await getClient();
+
+
   try {
-    const data = await sql<InvoiceForm>`
+    const data = await client.sql<InvoiceForm>`
       SELECT
         invoices.id,
         invoices.customer_id,
@@ -162,12 +199,15 @@ export async function fetchInvoiceById(id: string) {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoice.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
 export async function fetchCustomers() {
+  const client = await getClient();
   try {
-    const data = await sql<CustomerField>`
+    const data = await client.sql<CustomerField>`
       SELECT
         id,
         name
@@ -180,12 +220,17 @@ export async function fetchCustomers() {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch all customers.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
 
 export async function fetchFilteredCustomers(query: string) {
+  const client = await getClient();
+  
+  
   try {
-    const data = await sql<CustomersTableType>`
+    const data = await client.sql<CustomersTableType>`
 		SELECT
 		  customers.id,
 		  customers.name,
@@ -213,5 +258,7 @@ export async function fetchFilteredCustomers(query: string) {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch customer table.');
+  } finally {
+    client.release(); // Release the connection
   }
 }
